@@ -156,8 +156,8 @@ You can include Triton kernels using the `@triton.jit` decorator and launch them
             backend_display = "CUDA"
             format_text = """Your code should define a `ModelNew` class with the same interface as `Model`.
 You can include inline CUDA code using PyTorch's custom CUDA extensions."""
- 
-spec = f"""# KernelBench Optimization Task
+        
+        spec = f"""# KernelBench Optimization Task
 
 **Problem**: {self._problem_name}
 **Level**: {self._cfg.level}
