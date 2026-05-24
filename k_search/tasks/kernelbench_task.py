@@ -155,7 +155,33 @@ You can include Triton kernels using the `@triton.jit` decorator and launch them
         else:  # cuda or default
             backend_display = "CUDA"
             format_text = """Your code should define a `ModelNew` class with the same interface as `Model`.
-You can include inline CUDA code using PyTorch's custom CUDA extensions."""
+You can include inline CUDA code using PyTorch's custom CUDA extensions.
+
+**How to include CUDA kernels in ModelNew:**
+
+1. In the `__init__` method, define your CUDA code as inline strings:
+   - `cuda_header`: CUDA header declarations (function signatures, includes)
+   - `cuda_source`: CUDA kernel implementations (.cu code)
+   - `cpp_source`: C++ wrapper code that calls the CUDA kernels
+
+2. Use `torch.utils.cpp_extension.load_inline()` to compile and load the CUDA extension:
+   ```python
+   self._cuda_module = load_inline(
+       name='kernelbench_cuda_kernel',
+       cpp_sources=[cpp_source],
+       cuda_sources=[cuda_source],
+       extra_cflags=['-std=c++17'],
+       extra_cuda_cflags=['-O3', '-I{cuda_home}/include', '--use_fast_math', '-std=c++17'],
+       extra_include_paths=[f'{cuda_home}/include'],
+       verbose=True,
+       with_cuda=True
+   )
+   ```
+3. In the `forward()` method, call your CUDA kernel through the loaded module:
+   ```python
+   def forward(self, *args, **kwargs):
+       return self._cuda_module.run(*args, **kwargs)
+"""
         
         spec = f"""# KernelBench Optimization Task
 

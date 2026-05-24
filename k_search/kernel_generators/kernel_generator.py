@@ -95,12 +95,23 @@ class KernelGenerator:
 
         return files
 
-    def _clean_generated_code(self, code: str) -> str:
-        """Clean up generated code. For CUDA, parse XML and return dict. For others, clean Python syntax."""
+    def _clean_generated_code(self, code: str) -> str | dict:
+        """Clean up generated code. For CUDA, try XML first, fall back to Python. For others, clean Python syntax.
+        
+        Returns:
+            str: Cleaned Python code (for triton, python, or CUDA-as-Python)
+            dict: Parsed XML files (for CUDA XML format) with keys: kernel.h, kernel.cu, main.cpp
+        """
         if self.language.lower() == "cuda":
-            return self._parse_xml_files(code)
+            # Try to parse as XML first (3-file format)
+            xml_result = self._parse_xml_files(code)
+            # If XML parsing found all 3 files, return the dict
+            if xml_result and len(xml_result) == 3:
+                return xml_result
+            # Otherwise, treat as Python code with inline CUDA (fall through to Python cleaning)
+            print("[INFO] CUDA code not in XML format, treating as Python with inline CUDA")
 
-        # For non-CUDA languages (triton, python), clean up markdown and hex floats
+        # For non-CUDA languages (triton, python) or CUDA-as-Python, clean up markdown and hex floats
         if "```" in code:
             # Prefer parsing the first fenced block anywhere in the response. This mirrors the
             # CUDA path's "structured output" parsing and is robust to models emitting extra text.
@@ -144,6 +155,7 @@ class KernelGenerator:
 
         return code
 
+    
     def _generate_code_from_prompt(self, prompt: str):
         # If we fail to parse CUDA XML (missing kernel.h/kernel.cu/main.cpp), retry generation.
         max_parse_retries = 5
@@ -168,13 +180,18 @@ class KernelGenerator:
                 cleaned_code = self._clean_generated_code(generated_code)
 
                 if is_cuda:
-                    # cleaned_code should be a dict of required files for CUDA.
-                    if not isinstance(cleaned_code, dict):
-                        raise ValueError("CUDA generation did not return a parsed file dict")
-                    required = ("kernel.h", "kernel.cu", "main.cpp")
-                    missing = [k for k in required if (k not in cleaned_code) or (not str(cleaned_code.get(k, "")).strip())]
-                    if missing:
-                        raise ValueError(f"missing required XML files: {missing}")
+                    # For CUDA, accept either:
+                    # 1. Dict with 3 XML files (kernel.h, kernel.cu, main.cpp)
+                    # 2. Plain Python string with inline CUDA (for KernelBench)
+                    if isinstance(cleaned_code, dict):
+                        # XML format - validate all 3 files are present
+                        required = ("kernel.h", "kernel.cu", "main.cpp")
+                        missing = [k for k in required if (k not in cleaned_code) or (not str(cleaned_code.get(k, "")).strip())]
+                        if missing:
+                            raise ValueError(f"missing required XML files: {missing}")
+                    elif not isinstance(cleaned_code, str) or not cleaned_code.strip():
+                        raise ValueError("CUDA generation returned neither valid XML dict nor Python string")
+                    # If it's a string, it's Python with inline CUDA - no further validation needed here
 
                 return {"raw": generated_code, "cleaned": cleaned_code}
 
